@@ -7,6 +7,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#define Swap2Bytes(val) \
+    ( (((val) >> 8) & 0x00FF) | (((val) << 8) & 0xFF00) )
 #define ATTR_READ_ONLY 1        //dirEntry attribute definitions
 #define ATTR_HIDDEN 2
 #define ATTR_SYSTEM 4
@@ -55,7 +57,7 @@ void expandVariables(instruction* instr_ptr);
 
 void fat32info(varStruct fat32vars);
 void fat32size(instruction* instr_ptr);
-void fat32ls(instruction* instr_ptr, struct varStruct * bs, unsigned long clusterNum);
+void fat32ls(instruction* instr_ptr, varStruct bs);
 void fat32cd(instruction* instr_ptr);
 void fat32create(instruction* instr_ptr);
 void fat32mkdir(instruction* instr_ptr);
@@ -69,10 +71,12 @@ void fat32cp(instruction* instr_ptr);
 
 int littleToBigEndian(uint8_t *address, int bytes);
 void fat32initVars(FILE *image, varStruct *fat32vars);
-int getFirstDataSector();
-int getSectorOffset(int clusterNum);
-int getByteOffset(int clusterNum);
-void populateDirEntry(struct varStruct * bs, struct DIRENTRY entry, unsigned long byteNum);
+int getFirstDataSector(varStruct bs);
+int getSectorOffset(varStruct bs, int clusterNum);
+int getByteOffset(varStruct bs, int clusterNum);
+void populateDirEntry(struct DIRENTRY * entry, unsigned long byteNum);
+unsigned char* swap2Bytes(unsigned char* val);
+unsigned char* swap4Bytes(unsigned char* val);
 
 int main (int argc, char* argv[]) {
     //Variables
@@ -123,7 +127,7 @@ int main (int argc, char* argv[]) {
             fat32size(&instr);
         }
         else if(strcmp(first, "ls")==0) {
-            fat32ls(&instr);
+            fat32ls(&instr, fat32vars);
         }
         else if(strcmp(first, "cd")==0) {
             fat32cd(&instr);
@@ -161,7 +165,9 @@ int main (int argc, char* argv[]) {
 
 		//Clear instruction
 		clearInstruction(&instr);
+        
 	}
+    
 
     //Close file
     fclose(input);
@@ -274,31 +280,31 @@ void fat32size(instruction* instr_ptr) {
     return;
 }
 
-void fat32ls(instruction* instr_ptr, struct varStruct * bs, unsigned long clusterNum) {
+void fat32ls(instruction* instr_ptr, varStruct bs) {
     if(instr_ptr->numTokens > 2) {
 		printf("ls : Invalid number of arguments\n");
 		return;
 	}
     else {
         struct DIRENTRY dir;
-        unsigned long rootLoc = getByteOffset(bs.BPB_RootClus);
+        unsigned long rootLoc = getByteOffset(bs, bs.BPB_RootClus);
         unsigned long dirLoc = rootLoc + 32;
         unsigned long increment = 64;
         if (instr_ptr->numTokens == 1){
             //read current directory
         }
         else{
-            unsigned char* directoryName = instr_ptr->tokens[1];
+            char* directoryName = instr_ptr->tokens[1];
             do {
-                populateDirEntry(bs, &dir, dirLoc);
-                if (!strcmp(dir.DIR_name, directoryName)){
+                populateDirEntry(&dir, dirLoc);
+                if (!memcmp(dir.DIR_name, directoryName, 11)){
                     //enter directory and print all files/subdirectories
-                    dirLoc = getByteOffset(littleToBigEndian(dir.DIR_FstClusLO, 4));
-                    populateDirEntry(bs, &dir, dirLoc);
+                    dirLoc = getByteOffset(bs, littleToBigEndian(dir.DIR_FstClusLO, 4));
+                    populateDirEntry(&dir, dirLoc);
                     while (dir.DIR_name[0] != 0x0){
                         printf("%s\t", dir.DIR_name);
                         dirLoc += increment;
-                        populateDirEntry(bs, &dir, dirLoc);
+                        populateDirEntry(&dir, dirLoc);
                     }
                     printf("\n");
                     return;
@@ -400,16 +406,34 @@ int littleToBigEndian(uint8_t *address, int bytes) {
     if(bytes == 4) return address[0] | address[1] << 8 | address[2] << 16 | address[3] << 24;
 }
 
-int getFirstDataSector(){
-    return bs.BPB_RsvdSecCnt + (b.BPB_NumFATs * b.BPB_FATSz32);
+unsigned char* swap2Bytes(unsigned char* val){      //convert to big endian but return swapped hex values
+    unsigned char* res;
+    res = malloc(2);
+    res[0] = val[1];
+    res[1] = val[0];
+    return res;
 }
 
-int getSectorOffset(int clusterNum){
-    return ((clusterNum - 2) * bs.BPB_SecPerClus) + getFirstDataSector();
+unsigned char* swap4Bytes(unsigned char* val){      //convert to big endian but return swapped hex values
+    unsigned char* res;
+    res = malloc(4);
+    res[0] = val[3];
+    res[1] = val[2];
+    res[2] = val[1];
+    res[3] = val[0];
+    return res;
 }
 
-int getByteOffset(int clusterNum){                              //use this function to find which byte the specified cluster starts at
-    return getSectorOffset(clusterNum) * bs.BPB_BytsPerSec;
+int getFirstDataSector(varStruct bs){
+    return bs.BPB_RsvdSecCnt + (bs.BPB_NumFATs * bs.BPB_FATSz32);
+}
+
+int getSectorOffset(varStruct bs, int clusterNum){
+    return ((clusterNum - 2) * bs.BPB_SecPerClus) + getFirstDataSector(bs);
+}
+
+int getByteOffset(varStruct bs, int clusterNum){                              //use this function to find which byte the specified cluster starts at
+    return getSectorOffset(bs, clusterNum) * bs.BPB_BytsPerSec;
 }
 
 void fat32initVars(FILE *image, varStruct *fat32vars) {
@@ -455,7 +479,7 @@ void fat32initVars(FILE *image, varStruct *fat32vars) {
 
 }
 
-void populateDirEntry(struct varStruct * bs, struct DIRENTRY entry, unsigned long byteNum){
+void populateDirEntry(struct DIRENTRY * entry, unsigned long byteNum){
     unsigned char * temp;
     temp = malloc(12);
 
@@ -470,82 +494,82 @@ void populateDirEntry(struct varStruct * bs, struct DIRENTRY entry, unsigned lon
     if (read(filedesc, temp, 11) < 0){              //read() reads from the file and stores the specified number of characters (11, in this case) in temp
         printf("Error reading dirname");
     }
-    entry.DIR_name = temp;       //find a way to convert hex to ascii
+    memcpy(entry->DIR_name, temp, 11);       //find a way to convert hex to ascii
 
     //get dir attributes
     lseek(filedesc, byteNum+11, SEEK_SET);
     if (read(filedesc, temp, 1) < 0){
         printf("Error reading attributes");
     }
-    entry.DIR_Attributes = littleToBigEndian(temp, 4);
+    entry->DIR_Attributes = littleToBigEndian(temp, 4);
 
     //get dir reserved space
     lseek(filedesc, byteNum+12, SEEK_SET);
     if (read(filedesc, temp, 1) < 0){
         printf("Error reading reserved space");
     }
-    entry.DIR_NTRes = littleToBigEndian(temp, 4);
+    entry->DIR_NTRes = littleToBigEndian(temp, 4);
 
     //get dir creation time (tenths of a second)
     lseek(filedesc, byteNum+13, SEEK_SET);
     if (read(filedesc, temp, 1) < 0){
         printf("Error reading creation time tenths");
     }
-    entry.DIR_CrtTimeTenth = littleToBigEndian(temp, 4);
+    entry->DIR_CrtTimeTenth = littleToBigEndian(temp, 4);
 
     //get dir creation time
     lseek(filedesc, byteNum+14, SEEK_SET);
     if (read(filedesc, temp, 2) < 0){
         printf("Error reading creation time");
     }
-    entry.DIR_CrtTime = littleToBigEndian(temp, 4);
+    memcpy(entry->DIR_CrtTime, swap2Bytes(temp), 2);
 
     //get dir creation date
     lseek(filedesc, byteNum+16, SEEK_SET);
     if (read(filedesc, temp, 2) < 0){
         printf("Error reading creation date");
     }
-    entry.DIR_CrtDate = littleToBigEndian(temp, 4);
+    memcpy(entry->DIR_CrtDate, swap2Bytes(temp), 2);
 
     //get dir last access date
     lseek(filedesc, byteNum+18, SEEK_SET);
     if (read(filedesc, temp, 2) < 0){
         printf("Error reading last access date");
     }
-    entry.DIR_LstAccDate = littleToBigEndian(temp, 4);
+    memcpy(entry->DIR_LstAccDate, swap2Bytes(temp), 2);
 
     //get dir first cluster high word
     lseek(filedesc, byteNum+20, SEEK_SET);
     if (read(filedesc, temp, 2) < 0){
         printf("Error reading first cluster high word");
     }
-    entry.DIR_FstClusHI = littleToBigEndian(temp, 4);
+    memcpy(entry->DIR_FstClusHI, swap2Bytes(temp), 2);
 
     //get dir last write time
     lseek(filedesc, byteNum+22, SEEK_SET);
     if (read(filedesc, temp, 2) < 0){
         printf("Error reading last write time");
     }
-    entry.DIR_WrtTime = littleToBigEndian(temp, 4);
+    memcpy(entry->DIR_WrtTime, swap2Bytes(temp), 2);
 
     //get dir last write date
     lseek(filedesc, byteNum+24, SEEK_SET);
     if (read(filedesc, temp, 2) < 0){
         printf("Error reading last write date");
     }
-    entry.DIR_WrtDate = littleToBigEndian(temp, 4);
+    memcpy(entry->DIR_WrtDate, swap2Bytes(temp), 2);
 
     //get dir first cluster low word
     lseek(filedesc, byteNum+26, SEEK_SET);
     if (read(filedesc, temp, 2) < 0){
         printf("Error reading first cluster low word");
     }
-    entry.DIR_FstClusLO = littleToBigEndian(temp, 4);
+    memcpy(entry->DIR_FstClusLO, swap2Bytes(temp), 2);
 
     //get dir last access date
     lseek(filedesc, byteNum+28, SEEK_SET);
     if (read(filedesc, temp, 4) < 0){
         printf("Error reading file size");
     }
-    entry.DIR_FileSize = littleToBigEndian(temp, 4);
+    memcpy(entry->DIR_FileSize, swap4Bytes(temp), 2);
 }
