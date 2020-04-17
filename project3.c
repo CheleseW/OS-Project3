@@ -12,15 +12,24 @@ typedef struct
 	int numTokens;
 } instruction;
 
+typedef struct
+{
+    uint16_t BPB_BytsPerSec;
+    uint8_t BPB_SecPerClus;
+    uint16_t BPB_RsvdSecCnt;
+    uint8_t BPB_NumFATs;
+    uint32_t BPB_TotSec32;
+    uint32_t BPB_FATSz32;
+    uint32_t BPB_RootClus;
+} varStruct;
+
 void parseInput(instruction* instr_ptr);
 void addToken(instruction* instr_ptr, char* tok);
 void addNull(instruction* instr_ptr);
 void clearInstruction(instruction* instr_ptr);
 void expandVariables(instruction* instr_ptr);
 
-int checkCommand(instruction* instr_ptr);
-void fat32exit();
-void fat32info();
+void fat32info(varStruct fat32vars);
 void fat32size(instruction* instr_ptr);
 void fat32ls(instruction* instr_ptr);
 void fat32cd(instruction* instr_ptr);
@@ -35,21 +44,17 @@ void fat32rm(instruction* instr_ptr);
 void fat32cp(instruction* instr_ptr);
 
 int littleToBigEndian(uint8_t *address, int bytes);
-
-//Array of all bytes read from the image
-uint8_t *BYTE_ARRAY;
-
-//String to contain the current working directory
-char *fat32PWD;
+void fat32initVars(FILE *image, varStruct *fat32vars);
 
 int main (int argc, char* argv[]) {
     //Variables
     FILE *input;
     int offset;
+    char *first;
     uint8_t inputByte;
+    varStruct fat32vars;
 
-	BYTE_ARRAY = malloc(100000000); //100 MB
-	fat32PWD = malloc(100);
+	char *fat32PWD = malloc(100);
 
     instruction instr;
 	instr.tokens = NULL;
@@ -68,18 +73,8 @@ int main (int argc, char* argv[]) {
         return 1;
     }
 
-    //Loop through entire file putting each byte in the BYTE_ARRAY
-    offset = 0;
-    while(!feof(input)) {
-        inputByte = fgetc(input);
-
-        BYTE_ARRAY[offset] = inputByte;
-
-        ++offset;
-    };
-
-    //Close file
-    fclose(input);
+    //Initialize fat32 vars
+    fat32initVars(input, &fat32vars);
 
 	while(1) {
 		printf("%s/%s> ", basename(argv[1]), fat32PWD);	//PROMPT
@@ -88,13 +83,60 @@ int main (int argc, char* argv[]) {
 		parseInput(&instr);
 			
 		//Check for command
-		if(!checkCommand(&instr)) {
-			printf("Invalid command.\n");
-		}
+		first = instr.tokens[0];
+        if(strcmp(first, "exit")==0) {
+            printf("Exiting now!\n");
+            break;
+        }
+        else if(strcmp(first, "info")==0) {
+            fat32info(fat32vars);
+        }
+        else if(strcmp(first, "size")==0) {
+            fat32size(&instr);
+        }
+        else if(strcmp(first, "ls")==0) {
+            fat32ls(&instr);
+        }
+        else if(strcmp(first, "cd")==0) {
+            fat32cd(&instr);
+        }
+        else if(strcmp(first, "create")==0) {
+            fat32create(&instr);
+        }
+        else if(strcmp(first, "mkdir")==0) {
+            fat32mkdir(&instr);
+        }
+        else if(strcmp(first, "mv")==0) {
+            fat32mv(&instr);
+        }
+        else if(strcmp(first, "open")==0) {
+            fat32open(&instr);
+        }
+        else if(strcmp(first, "close")==0) {
+            fat32close(&instr);
+        }
+        else if(strcmp(first, "read")==0) {
+            fat32read(&instr);
+        }
+        else if(strcmp(first, "write")==0) {
+            fat32write(&instr);
+        }
+        else if(strcmp(first, "rm")==0) {
+            fat32rm(&instr);
+        }
+        else if(strcmp(first, "cp")==0) {
+            fat32cp(&instr);
+        }
+        else {
+            printf("Unknown command\n");
+        }
 
 		//Clear instruction
 		clearInstruction(&instr);
 	}
+
+    //Close file
+    fclose(input);
 
     return 0;
 }
@@ -183,92 +225,15 @@ void clearInstruction(instruction* instr_ptr){
 	instr_ptr->numTokens = 0;
 }
 
-int checkCommand(instruction* instr_ptr) {
-    char* first = instr_ptr->tokens[0];
-    if(strcmp(first, "exit")==0) {
-        printf("Exiting now!\n");
-        fat32exit();
-        return 1;
-    }
-    else if(strcmp(first, "info")==0) {
-        fat32info();
-        return 2;
-    }
-    else if(strcmp(first, "size")==0) {
-        fat32size(instr_ptr);
-        return 3;
-    }
-    else if(strcmp(first, "ls")==0) {
-        fat32ls(instr_ptr);
-        return 4;
-    }
-    else if(strcmp(first, "cd")==0) {
-        fat32cd(instr_ptr);
-        return 5;
-    }
-    else if(strcmp(first, "create")==0) {
-        fat32create(instr_ptr);
-        return 6;
-    }
-    else if(strcmp(first, "mkdir")==0) {
-        fat32mkdir(instr_ptr);
-        return 7;
-    }
-    else if(strcmp(first, "mv")==0) {
-        fat32mv(instr_ptr);
-        return 8;
-    }
-    else if(strcmp(first, "open")==0) {
-        fat32open(instr_ptr);
-        return 9;
-    }
-    else if(strcmp(first, "close")==0) {
-        fat32close(instr_ptr);
-        return 10;
-    }
-    else if(strcmp(first, "read")==0) {
-        fat32read(instr_ptr);
-        return 11;
-    }
-    else if(strcmp(first, "write")==0) {
-        fat32write(instr_ptr);
-        return 12;
-    }
-    else if(strcmp(first, "rm")==0) {
-        fat32rm(instr_ptr);
-        return 13;
-    }
-    else if(strcmp(first, "cp")==0) {
-        fat32cp(instr_ptr);
-        return 14;
-    }
-    else {
-        return 0;
-    }
-}
+void fat32info(varStruct fat32vars) {
 
-void fat32exit() {
-	free(BYTE_ARRAY);
-	exit(1);
-}
-
-void fat32info() {
-
-    uint16_t BPB_BytsPerSec = littleToBigEndian(&BYTE_ARRAY[11], 2);
-    uint8_t BPB_SecPerClus = BYTE_ARRAY[13];
-    uint16_t BPB_RsvdSecCnt = littleToBigEndian(&BYTE_ARRAY[14], 2);
-    uint8_t BPB_NumFATs = BYTE_ARRAY[16];
-    uint32_t BPB_TotSec32 = littleToBigEndian(&BYTE_ARRAY[32], 4);
-    uint32_t BPB_FATSz32 = littleToBigEndian(&BYTE_ARRAY[36], 4);
-    uint32_t PB_RootClus = littleToBigEndian(&BYTE_ARRAY[44], 4);
-
-    printf("Bytes per sector: %d\n", BPB_BytsPerSec);
-    printf("Sectors per cluster: %d\n", BPB_SecPerClus);
-    printf("Reserved sector count: %d\n", BPB_RsvdSecCnt);
-    printf("Number of FATs: %d\n", BPB_NumFATs);
-    printf("Total Sectors: %d\n", BPB_TotSec32);
-    printf("FAT size: %d\n", BPB_FATSz32);
-    printf("Root Cluster: %d\n", PB_RootClus);
+    printf("Bytes per sector: %d\n", fat32vars.BPB_BytsPerSec);
+    printf("Sectors per cluster: %d\n", fat32vars.BPB_SecPerClus);
+    printf("Reserved sector count: %d\n", fat32vars.BPB_RsvdSecCnt);
+    printf("Number of FATs: %d\n", fat32vars.BPB_NumFATs);
+    printf("Total Sectors: %d\n", fat32vars.BPB_TotSec32);
+    printf("FAT size: %d\n", fat32vars.BPB_FATSz32);
+    printf("Root Cluster: %d\n", fat32vars.BPB_RootClus);
 
 }
 
@@ -372,4 +337,47 @@ void fat32cp(instruction* instr_ptr) {
 int littleToBigEndian(uint8_t *address, int bytes) {
     if(bytes == 2) return address[0] | address[1] << 8;
     if(bytes == 4) return address[0] | address[1] << 8 | address[2] << 16 | address[3] << 24;
+}
+
+void fat32initVars(FILE *image, varStruct *fat32vars) {
+    uint8_t *temp;
+    temp = malloc(4);
+
+    fseek(image, 11, SEEK_SET);
+    temp[0] = fgetc(image);
+    temp[1] = fgetc(image);
+    fat32vars->BPB_BytsPerSec = littleToBigEndian(temp, 4);
+
+    fseek(image, 13, SEEK_SET);
+    fat32vars->BPB_SecPerClus = fgetc(image);
+
+    fseek(image, 14, SEEK_SET);
+    temp[0] = fgetc(image);
+    temp[1] = fgetc(image);
+    fat32vars->BPB_RsvdSecCnt = littleToBigEndian(temp, 4);
+
+    fseek(image, 16, SEEK_SET);
+    fat32vars->BPB_NumFATs = fgetc(image);
+
+    fseek(image, 32, SEEK_SET);
+    temp[0] = fgetc(image);
+    temp[1] = fgetc(image);
+    temp[2] = fgetc(image);
+    temp[3] = fgetc(image);
+    fat32vars->BPB_TotSec32 = littleToBigEndian(temp, 4);
+
+    fseek(image, 36, SEEK_SET);
+    temp[0] = fgetc(image);
+    temp[1] = fgetc(image);
+    temp[2] = fgetc(image);
+    temp[3] = fgetc(image);
+    fat32vars->BPB_FATSz32 = littleToBigEndian(temp, 4);
+
+    fseek(image, 44, SEEK_SET);
+    temp[0] = fgetc(image);
+    temp[1] = fgetc(image);
+    temp[2] = fgetc(image);
+    temp[3] = fgetc(image);
+    fat32vars->BPB_RootClus = littleToBigEndian(temp, 4);
+
 }
