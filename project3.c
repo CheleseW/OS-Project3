@@ -12,8 +12,26 @@ typedef struct
 	int numTokens;
 } instruction;
 
+struct DIRENTRY {
+
+    unsigned char DIR_Name[11];
+    unsigned char DIR_Attr;
+    unsigned char DIR_NTRes;
+    unsigned char DIR_CrtTimeTenth;
+    unsigned char DIR_CrtTime[2];
+    unsigned char DIR_CrtDate[2];
+    unsigned char DIR_LstAccDate[2];
+    unsigned char DIR_FstClusHI[2];
+    unsigned char DIR_WrtTime[2];
+    unsigned char DIR_WrtDate[2];
+    unsigned char DIR_FstClusLO[2];
+    unsigned char DIR_FileSize[4];
+
+}__attribute__((packed));
+
 typedef struct
 {
+
     uint16_t BPB_BytsPerSec;
     uint8_t BPB_SecPerClus;
     uint16_t BPB_RsvdSecCnt;
@@ -21,6 +39,7 @@ typedef struct
     uint32_t BPB_TotSec32;
     uint32_t BPB_FATSz32;
     uint32_t BPB_RootClus;
+
 } varStruct;
 
 void parseInput(instruction* instr_ptr);
@@ -30,35 +49,27 @@ void clearInstruction(instruction* instr_ptr);
 void expandVariables(instruction* instr_ptr);
 
 void fat32info(varStruct fat32vars);
-void fat32size(FILE *image, varStruct fat32vars, instruction* instr_ptr);
-void fat32ls(instruction* instr_ptr);
-void fat32cd(instruction* instr_ptr);
-void fat32create(instruction* instr_ptr);
-void fat32mkdir(instruction* instr_ptr);
-void fat32mv(instruction* instr_ptr);
-void fat32open(instruction* instr_ptr);
-void fat32close(instruction* instr_ptr);
-void fat32read(instruction* instr_ptr);
-void fat32write(instruction* instr_ptr);
-void fat32rm(instruction* instr_ptr);
-void fat32cp(instruction* instr_ptr);
+void fat32size();
+void fat32ls();
+void fat32cd();
+void fat32create();
+void fat32mkdir();
+void fat32mv();
+void fat32open();
+void fat32close();
+void fat32read();
+void fat32write();
+void fat32rm();
+void fat32cp();
 
-int littleToBigEndian(uint8_t *address, int bytes);
+int littleToBigEndian(uint8_t *address);
 void fat32initVars(FILE *image, varStruct *fat32vars);
 
 int main (int argc, char* argv[]) {
-    //Variables
     FILE *input;
-    int offset;
-    char *first;
-    uint8_t inputByte;
     varStruct fat32vars;
-
-	char *fat32PWD = malloc(100);
-
     instruction instr;
-	instr.tokens = NULL;
-	instr.numTokens = 0;
+    char *first;
 
     //Check arguments
     if(argc != 2) {
@@ -76,8 +87,12 @@ int main (int argc, char* argv[]) {
     //Initialize fat32 vars
     fat32initVars(input, &fat32vars);
 
+    //Initialize instruction
+    instr.tokens = NULL;
+	instr.numTokens = 0;
+
 	while(1) {
-		printf("%s/%s> ", basename(argv[1]), fat32PWD);	//PROMPT
+		printf("%s/> ", basename(argv[1]));	//PROMPT
 
 		//Parse instruction
 		parseInput(&instr);
@@ -88,45 +103,98 @@ int main (int argc, char* argv[]) {
             printf("Exiting now!\n");
             break;
         }
+
         else if(strcmp(first, "info")==0) {
-            fat32info(fat32vars);
+            if(instr.numTokens == 1) {
+                fat32info(fat32vars);
+            }
+            else printf("info : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "size")==0) {
-            fat32size(input, fat32vars, &instr);
+            if(instr.numTokens == 2) {
+                fat32size();
+            }
+            else printf("size : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "ls")==0) {
-            fat32ls(&instr);
+            if(instr.numTokens < 3) {
+                fat32ls();
+            }
+            else printf("ls : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "cd")==0) {
-            fat32cd(&instr);
+            if(instr.numTokens < 3) {
+                fat32cd();
+	        }
+            else printf("cd : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "create")==0) {
-            fat32create(&instr);
+            if(instr.numTokens == 2) {
+                fat32create();
+            }
+            else printf("create : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "mkdir")==0) {
-            fat32mkdir(&instr);
+            if(instr.numTokens == 2) {
+                fat32mkdir();
+            }
+            else printf("mkdir : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "mv")==0) {
-            fat32mv(&instr);
+            if(instr.numTokens == 3) {
+                fat32mv();
+            }
+            else printf("mv : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "open")==0) {
-            fat32open(&instr);
+            if(instr.numTokens == 2) {
+                fat32open();
+            }
+            else printf("open : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "close")==0) {
-            fat32close(&instr);
+            if(instr.numTokens == 2) {
+                fat32close();
+            }
+            else printf("close : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "read")==0) {
-            fat32read(&instr);
+            if(instr.numTokens == 2) {
+                fat32read();
+            }
+            else printf("read : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "write")==0) {
-            fat32write(&instr);
+            if(instr.numTokens == 2) {
+                fat32write();
+            }
+            else printf("write : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "rm")==0) {
-            fat32rm(&instr);
+            if(instr.numTokens == 2) {
+                fat32read();
+            }
+            else printf("read : Invalid number of arguments\n");
         }
+
         else if(strcmp(first, "cp")==0) {
-            fat32cp(&instr);
+            if(instr.numTokens == 3) {
+                fat32ls();
+            }
+            else printf("ls : Invalid number of arguments\n");
         }
+
         else {
             printf("Unknown command\n");
         }
@@ -210,8 +278,6 @@ void addNull(instruction* instr_ptr){
 		instr_ptr->tokens = (char**)realloc(instr_ptr->tokens, (instr_ptr->numTokens+1) * sizeof(char*));
 
 	instr_ptr->tokens[instr_ptr->numTokens] = (char*) NULL;
-
-	//instr_ptr->numTokens++; <-----Why increment the number of tokens for a null token
 }
 
 void clearInstruction(instruction* instr_ptr){
@@ -369,138 +435,86 @@ void fat32size(FILE *image, varStruct fat32vars, instruction* instr_ptr) {
     return;
 }
 
-void fat32ls(instruction* instr_ptr) {
-    if(instr_ptr->numTokens > 2) {
-		printf("ls : Invalid number of arguments\n");
-		return;
-	}
-    printf("Files in directory\n");
 }
 
-void fat32cd(instruction* instr_ptr) {
-	if(instr_ptr->numTokens != 2) {
-		printf("cd : Invalid number of arguments\n");
-		return;
-	}
-    printf("Changing directory to %s\n", instr_ptr->tokens[1]);
+void fat32create() {
+
 }
 
-void fat32create(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 2) {
-		printf("create : Invalid number of arguments\n");
-		return;
-	}
-    printf("Created file %s\n", instr_ptr->tokens[1]);
+void fat32mkdir() {
+
 }
 
-void fat32mkdir(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 2) {
-		printf("mkdir : Invalid number of arguments\n");
-		return;
-	}
-    printf("Created directory %s\n", instr_ptr->tokens[1]);
+void fat32mv() {
+
 }
 
-void fat32mv(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 3) {
-		printf("mv : Invalid number of arguments\n");
-		return;
-	}
-    printf("Moved %s to %s\n", instr_ptr->tokens[1], instr_ptr->tokens[2]);
+void fat32open() {
+
 }
 
-void fat32open(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 3) {
-		printf("open : Invalid number of arguments\n");
-		return;
-	}
-    printf("Opened file %s in mode %s\n", instr_ptr->tokens[1], instr_ptr->tokens[2]);
+void fat32close() {
+
 }
 
-void fat32close(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 2) {
-		printf("close : Invalid number of arguments\n");
-		return;
-	}
-    printf("Closed file %s\n", instr_ptr->tokens[1]);
+void fat32read() {
+
 }
 
-void fat32read(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 4) {
-		printf("read : Invalid number of arguments\n");
-		return;
-	}
-    printf("Reading file %s\n", instr_ptr->tokens[1]);
+void fat32write() {
+
 }
 
-void fat32write(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 5) {
-		printf("write : Invalid number of arguments\n");
-		return;
-	}
-    printf("Writing file %s\n", instr_ptr->tokens[1]);
+void fat32rm() {
+
 }
 
-void fat32rm(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 2) {
-		printf("rm : Invalid number of arguments\n");
-		return;
-	}
-    printf("Removed file %s\n", instr_ptr->tokens[1]);
+void fat32cp() {
+
 }
 
-void fat32cp(instruction* instr_ptr) {
-    if(instr_ptr->numTokens != 3) {
-		printf("cp : Invalid number of arguments\n");
-		return;
-	}
-    printf("Copying %s to %s\n", instr_ptr->tokens[1], instr_ptr->tokens[2]);
-}
-
-int littleToBigEndian(uint8_t *address, int bytes) {
-    if(bytes == 2) return address[0] | address[1] << 8;
-    if(bytes == 4) return address[0] | address[1] << 8 | address[2] << 16 | address[3] << 24;
+//This function will segfault if you pass a pointer with less than 4 bytes of memory allocated
+int littleToBigEndian(uint8_t *address) {
+    return address[0] | address[1] << 8 | address[2] << 16 | address[3] << 24;
 }
 
 void fat32initVars(FILE *image, varStruct *fat32vars) {
     uint8_t *temp;
-    temp = malloc(4);
 
+    temp = malloc(4);
     fseek(image, 11, SEEK_SET);
-    temp[0] = fgetc(image);
-    temp[1] = fgetc(image);
-    fat32vars->BPB_BytsPerSec = littleToBigEndian(temp, 4);
+    fread(temp, 1, 2, image);
+    fat32vars->BPB_BytsPerSec = littleToBigEndian(temp);
+    free(temp);
 
     fseek(image, 13, SEEK_SET);
     fat32vars->BPB_SecPerClus = fgetc(image);
 
+    temp = malloc(4);
     fseek(image, 14, SEEK_SET);
-    temp[0] = fgetc(image);
-    temp[1] = fgetc(image);
-    fat32vars->BPB_RsvdSecCnt = littleToBigEndian(temp, 4);
+    fread(temp, 1, 2, image);
+    fat32vars->BPB_RsvdSecCnt = littleToBigEndian(temp);
+    free(temp);
 
     fseek(image, 16, SEEK_SET);
     fat32vars->BPB_NumFATs = fgetc(image);
 
+    temp = malloc(4);
     fseek(image, 32, SEEK_SET);
-    temp[0] = fgetc(image);
-    temp[1] = fgetc(image);
-    temp[2] = fgetc(image);
-    temp[3] = fgetc(image);
-    fat32vars->BPB_TotSec32 = littleToBigEndian(temp, 4);
+    fread(temp, 1, 4, image);
+    fat32vars->BPB_TotSec32 = littleToBigEndian(temp);
+    free(temp);
 
+    temp = malloc(4);
     fseek(image, 36, SEEK_SET);
-    temp[0] = fgetc(image);
-    temp[1] = fgetc(image);
-    temp[2] = fgetc(image);
-    temp[3] = fgetc(image);
-    fat32vars->BPB_FATSz32 = littleToBigEndian(temp, 4);
+    fread(temp, 1, 4, image);
+    fat32vars->BPB_FATSz32 = littleToBigEndian(temp);
+    free(temp);
 
+    temp = malloc(4);
     fseek(image, 44, SEEK_SET);
-    temp[0] = fgetc(image);
-    temp[1] = fgetc(image);
-    temp[2] = fgetc(image);
-    temp[3] = fgetc(image);
-    fat32vars->BPB_RootClus = littleToBigEndian(temp, 4);
+    fread(temp, 1, 4, image);
+    fat32vars->BPB_RootClus = littleToBigEndian(temp);
+    free(temp);
 
 }
