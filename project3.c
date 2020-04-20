@@ -76,7 +76,7 @@ void fat32close(varStruct *fat32vars, char* filename);
 void fat32read(FILE *image, varStruct *fat32vars, char* filename, char *offsetString, char *sizeString);
 void fat32write();
 void fat32rm(FILE *image, varStruct *fat32vars, char* filename);
-void fat32cp();
+void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr);
 
 void fat32initVars(FILE *image, varStruct *fat32vars);
 void fillDirectoryEntry(FILE* image, struct DIRENTRY *dir);
@@ -230,8 +230,8 @@ int main (int argc, char* argv[]) {
         }
 
         else if(strcmp(first, "cp")==0) {
-            if(instr.numTokens == 3) {
-                fat32cp();
+            if(instr.numTokens >= 3) {
+                fat32cp(input, &fat32vars, &instr);
                 fclose(input);
                 input = fopen(argv[1], "r+");
             }
@@ -868,7 +868,58 @@ void fat32rm(FILE *image, varStruct *fat32vars, char* filename) {
     printf("File not found\n");
 }
 
-void fat32cp() {
+void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
+    struct DIRENTRY *dir;
+    char filename[200], TO[200];
+
+    strcpy(filename, instr_ptr->tokens[1]);
+
+    if(instr_ptr->numTokens == 3){
+      strcpy(TO, "TO");
+    }
+    else if(instr_ptr->numTokens == 4){
+
+      strcpy(TO, instr_ptr->tokens[3]);
+      int loop, found = 0;
+      for(loop = 0; loop < fat32vars->numDirectories; ++loop) {
+
+          dir = &fat32vars->currentDirectories[loop];
+
+          if(compareFilenames(dir->DIR_Name, TO) == 0) {
+              if(dir->DIR_Attr == 16){
+                printf("Directory destination exists.\n");
+                found = 1;
+              }
+          }
+      }
+
+      if(!found){
+        strcpy(TO, "TO");
+      }
+
+    }
+
+
+    //Check to see if file already exists
+    int loop, found = 1;
+    for(loop = 0; loop < fat32vars->numDirectories; ++loop) {
+
+        dir = &fat32vars->currentDirectories[loop];
+
+        if(compareFilenames(dir->DIR_Name, filename) == 0) {
+
+            if(dir->DIR_Attr == 16) {
+                printf("Directory with the same name exits.\n");
+                return;
+            }
+            else {
+                printf("File already exists.\n");
+            }
+
+        }
+    }
+
+    printf("cp %s to %s\n",filename, TO);
 
 }
 
