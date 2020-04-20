@@ -97,6 +97,7 @@ int getFirstFreeCluster(FILE *image, varStruct *fat32vars);
 void markFATentry(FILE *image, varStruct *fat32vars, int cluster, int nextCluster);
 char* directoryToString(struct DIRENTRY *dir);
 char *makeDirEntryString(varStruct *fat32vars, char *filename, int firstFreeClus);
+char *makeFileEntryString(varStruct *fat32vars, char *dirName, int firstClusterNum);
 int bitExtracted(int number, int k, int p);
 
 int main (int argc, char* argv[]) {
@@ -416,27 +417,53 @@ void fat32cd(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
 }
 
 void fat32create(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
-  struct DIRENTRY *dir;
+    struct DIRENTRY *dir;
+
+    //Check to see if file already exists
+    int loop;
+    for(loop = 0; loop < fat32vars->numDirectories; ++loop) {
+
+        dir = &fat32vars->currentDirectories[loop];
+
+        if(compareFilenames(dir->DIR_Name, instr_ptr->tokens[1]) == 0) {
+
+            if(dir->DIR_Attr == 16) {
+                printf("File is directory.\n");
+                return;
+            }
+            else {
+                printf("File already exists.\n");
+                return;
+            }
+
+        }
+    }
+
+    int firstFreeClus = getFirstFreeCluster(image, fat32vars);
+    markFATentry(image, fat32vars, firstFreeClus, 0);
+    int freeClusOffset = clusterToOffset(fat32vars, firstFreeClus);
+    int currDirCluster = offsetToCluster(fat32vars, fat32vars->currentDirectoryOffset);
+    if(currDirCluster == fat32vars->BPB_RootClus) currDirCluster = 0;
+
+    //find first empty space in current directory, store in freeDirOffset
+    unsigned char * readEntry = malloc(32);
+    fseek(image, fat32vars->currentDirectoryOffset, SEEK_SET);
+    do{
+        fread(readEntry, 1, 32, image);
+    } while (readEntry[0] != 0 && readEntry[0] != 229);
+    fseek(image, -32, SEEK_CUR);
+    int freeDirOffset = ftell(image);
+
+    //Create directory entry in current directory
+    char* dirEntry = makeFileEntryString(fat32vars, instr_ptr->tokens[1], firstFreeClus);
+    fseek(image, freeDirOffset, SEEK_SET);
+    fwrite(dirEntry, 1, 32, image);
 
 
-  int loop;
-  for(loop = 0; loop < fat32vars->numDirectories; ++loop) {
+    //update currentDirectories with newly created directory
+    fillDirectories(image, fat32vars);
 
-      dir = &fat32vars->currentDirectories[loop];
 
-      if(compareFilenames(dir->DIR_Name, instr_ptr->tokens[1]) == 0) {
-
-          if(dir->DIR_Attr == 16) {
-              printf("File is directory.\n");
-              return;
-          }
-          else {
-              printf("File already exists.\n");
-              return;
-          }
-
-      }
-  }
 }
 
 void fat32mkdir(FILE *image, varStruct *fat32vars, char *directoryName) {
@@ -1311,6 +1338,37 @@ char *makeDirEntryString(varStruct *fat32vars, char *dirName, int firstClusterNu
 
     //Set attribute
     dirString[11] = ATTR_DIRECTORY;
+
+    //extract lower bits of first cluster
+    unsigned char lowBits[2];
+    dirString[26] = bitExtracted(firstClusterNum, 8, 1);
+    dirString[27] = bitExtracted(firstClusterNum, 8, 9);
+
+    //extract higher bits of first cluster
+    unsigned char highBits[2];
+    dirString[20] = bitExtracted(firstClusterNum, 8, 17);
+    dirString[21] = bitExtracted(firstClusterNum, 8, 25);
+
+    return dirString;
+}
+
+char *makeFileEntryString(varStruct *fat32vars, char *dirName, int firstClusterNum) {
+    char *dirString = malloc(32);
+
+    //Set all bytes to 0 to clean allocated memory
+    memset(dirString, 0, 32);
+
+    //Set first 11 bytes as spaces for the name entry
+    memset(dirString, 32, 11);
+
+    //Copy passed in name
+    int loop;
+    for(loop = 0; loop < strlen(dirName); ++loop) {
+        dirString[loop] = toupper(dirName[loop]);
+    }
+
+    //Set attribute
+    dirString[11] = ATTR_VOLUME_ID | ATTR_ARCHIVE;
 
     //extract lower bits of first cluster
     unsigned char lowBits[2];
