@@ -75,7 +75,7 @@ void fat32mv(FILE *image, varStruct *fat32vars, char *filename1, char *filename2
 void fat32open(varStruct *fat32vars, char* filename, char *mode);
 void fat32close(varStruct *fat32vars, char* filename);
 void fat32read(FILE *image, varStruct *fat32vars, char* filename, char *offsetString, char *sizeString);
-void fat32write();
+void fat32write(FILE *image, varStruct *fat32vars, char* filename, char* offsetString, char* sizeString, char* inputString);
 void fat32rm(FILE *image, varStruct *fat32vars, char* filename);
 void fat32cp();
 
@@ -96,6 +96,7 @@ int littleToBigEndian(unsigned char *address);
 int fileIsOpen(varStruct *fat32vars, char *filename);
 int getFirstFreeCluster(FILE *image, varStruct *fat32vars);
 void markFATentry(FILE *image, varStruct *fat32vars, int cluster, int nextCluster);
+void expandCluster(FILE *image, varStruct *fat32vars, int cluster);
 char* directoryToString(struct DIRENTRY *dir);
 char *makeDirEntryString(varStruct *fat32vars, char *dirname, int firstFreeClus);
 char *makeFileEntryString(varStruct *fat32vars, char *filename, int firstClusterNum);
@@ -122,6 +123,7 @@ int main (int argc, char* argv[]) {
 
     //Initialize fat32 vars
     fat32initVars(input, &fat32vars);
+    
     
     //Initialize instruction
     instr.tokens = NULL;
@@ -217,8 +219,30 @@ int main (int argc, char* argv[]) {
         }
 
         else if(strcmp(first, "write")==0) {
-            if(instr.numTokens == 2) {
-                fat32write();
+            //ensure input string is enclosed by "" and store it in char* inputString to be passed to function
+            if (instr.numTokens >= 5){
+                if (instr.tokens[4][0] == 34){      //if input string starts with "
+                    int lastTokenSize = strlen(instr.tokens[instr.numTokens-1]);
+                    if (instr.tokens[instr.numTokens-1][lastTokenSize-1] == 34){    //if input string ends with "
+                        char* inputString = malloc(100);
+                        strcpy(inputString, instr.tokens[4]);
+                        int loop;
+                        for (loop = 5; loop < instr.numTokens; loop++){
+                            strcat(inputString, " ");
+                            strcat(inputString, instr.tokens[loop]);
+                        }
+                        fat32write(input, &fat32vars, instr.tokens[1], instr.tokens[2], instr.tokens[3], inputString);
+                        fclose(input);
+                        input = fopen(argv[1], "r+");
+                    }
+                    else{
+                        printf("write : End of Input string formatted incorrectly\n");
+                    }
+                }
+                else{
+                        printf("write : Start of Input string formatted incorrectly\n");
+                }
+                
             }
             else printf("write : Invalid number of arguments\n");
         }
@@ -835,8 +859,85 @@ void fat32read(FILE *image, varStruct *fat32vars, char* filename, char *offsetSt
     printf("File not found\n");
 }
 
-void fat32write() {
+void fat32write(FILE *image, varStruct *fat32vars, char* filename, char* offsetString, char* sizeString, char* inputString) {
+    struct DIRENTRY *dir;
+    fileStruct *file;
+    int loop1, loop2, offset, size, readSector, bpc;
 
+    offset = atoi(offsetString);
+    size = atoi(sizeString);
+
+    //remove quotes from inputString
+    inputString++;
+    inputString[strlen(inputString)-1] = 0;
+
+    bpc = fat32vars->BPB_BytsPerSec * fat32vars->BPB_SecPerClus;
+
+    //cannot write to . and ..
+    if(fat32vars->currentDirectoryOffset != fat32vars->rootDirectoryOffset) {
+        if(!strcmp(filename, ".") || !strcmp(filename, "..")) {
+            printf("Invalid file\n");
+            return;
+        }
+    }
+
+    for(loop1 = 0; loop1 < fat32vars->numDirectories; ++loop1) {
+
+        dir = &fat32vars->currentDirectories[loop1];
+
+        if(dir->DIR_Attr == 15) continue;
+
+        if(compareFilenames(dir->DIR_Name, filename) == 0) {
+            if(dir->DIR_Attr == 16) {
+                printf("File is directory.\n");
+                return;
+            }
+            else {
+                for(loop2 = 0; loop2 < fat32vars->numOpenFiles; ++loop2) {
+                    file = &fat32vars->openFiles[loop2];
+                    if(!strcmp(basename(file->path), filename)) {
+                        if(file->mode == 1) {
+                            printf("File is in read only mode\n");
+                            return;
+                        }
+                        int writeCluster = getDirectoryFirstCluster(fat32vars, dir);
+                        int filesize = littleToBigEndian(dir->DIR_FileSize);
+                        if((offset + size) > filesize) {    //have to make more clusters
+                            //calculate number of extra clusters to make
+                            int i;
+                            int currClusters = filesize / bpc;
+                            if (filesize % bpc > 0){
+                                currClusters++;
+                            }
+                            int finalClusters = (offset+size) / bpc;
+                            if ((offset+size) % bpc > 0){
+                                finalClusters++;
+                            }
+                            int extraClusters = finalClusters - currClusters;
+                            //create new clusters
+                            for (i = 0; i < extraClusters; i++){
+                                expandCluster(image, fat32vars, writeCluster);
+                            }
+                        }
+                        int writeOffset = clusterToOffset(fat32vars, writeCluster) + offset;
+                        fseek(image, writeOffset, SEEK_SET);
+                        for(loop2 = 0; loop2 < size; ++loop2) {     //write 1 char at a time, moving to next cluster if needed
+                            fputc(inputString[loop2], image);
+                            if((ftell(image)%fat32vars->BPB_BytsPerSec) == 0) {
+                                int currCluster = offsetToCluster(fat32vars, ftell(image) - fat32vars->BPB_BytsPerSec);
+                                offset -= (loop2+1);
+                                writeCluster = getNextClusterNumber(image, fat32vars, currCluster);
+                                writeOffset = clusterToOffset(fat32vars, writeCluster);
+                                fseek(image, writeOffset, SEEK_SET);
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
+    }
 }
 
 void fat32rm(FILE *image, varStruct *fat32vars, char* filename) {
@@ -1300,6 +1401,22 @@ void markFATentry(FILE *image, varStruct *fat32vars, int cluster, int nextCluste
     //fwrite(emptyHex, 1, 4, image);
 
     return;
+}
+
+//takes cluster in a file and expands the clusters in that file
+void expandCluster(FILE *image, varStruct *fat32vars, int cluster){
+    int prevClus = cluster;
+    while(1){
+        int nextClus = getNextClusterNumber(image, fat32vars, prevClus);
+        if (prevClus == nextClus){   //finds last cluster in that file
+            int freeClus = getFirstFreeCluster(image, fat32vars);   //allocate first free cluster and make it the last cluster of file
+            markFATentry(image, fat32vars, nextClus, freeClus);
+            markFATentry(image, fat32vars, freeClus, 0);
+            break;
+        }
+        prevClus = nextClus;
+    }
+   
 }
 
 //fill in dir with appropriate values (dirName and first cluster, mainly)
