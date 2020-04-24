@@ -918,6 +918,16 @@ void fat32write(FILE *image, varStruct *fat32vars, char* filename, char* offsetS
                             for (i = 0; i < extraClusters; i++){
                                 expandCluster(image, fat32vars, writeCluster);
                             }
+
+                            //increase filesize and write to direntry
+                            int newFileSize = offset+size;
+                            unsigned char sizeEntry[4];
+                            dir->DIR_FileSize[0] = bitExtracted(newFileSize, 8, 1);
+                            dir->DIR_FileSize[1] = bitExtracted(newFileSize, 8, 9);
+                            dir->DIR_FileSize[2] = bitExtracted(newFileSize, 8, 17);
+                            dir->DIR_FileSize[3] = bitExtracted(newFileSize, 8, 25);
+                            fseek(image, dir->entryOffset+28, SEEK_SET);
+                            fwrite(dir->DIR_FileSize, 1, 4, image);
                         }
                         int writeOffset = clusterToOffset(fat32vars, writeCluster) + offset;
                         fseek(image, writeOffset, SEEK_SET);
