@@ -887,7 +887,7 @@ void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
 
           if(compareFilenames(dir->DIR_Name, TO) == 0) {
               if(dir->DIR_Attr == 16){
-                //printf("Directory destination exists.\n");
+                printf("Directory destination exists.\n");
                 found = 1;
               }
           }
@@ -912,16 +912,32 @@ void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
                 printf("Directory with the same name exits.\n");
                 return;
             }
+            else {
+                printf("File already exists.\n");
+            }
 
         }
     }
 
-    //printf("cp %s to %s\n",filename, TO);
+    printf("cp %s to %s\n",filename, TO);
 
     ///////////////////////////////////Error Checking//////////////////////////////
 
     struct DIRENTRY  *dirFROM = NULL, *dirTO = NULL;
     int fromloop, toloop;
+/*
+    if(strlen(TO) > 8) {
+        printf("Filename too long\n");
+        return;
+    }
+    //Handle the "." and ".." cases for FROM
+    if(fat32vars->currentDirectoryOffset != fat32vars->rootDirectoryOffset) {
+        if(!strcmp(FROM, ".") || !strcmp(FROM, "..")) {
+            printf("Invalid file\n");
+            return;
+        }
+    }
+    */
 
     //Navigate to file in FROM
     for(fromloop = 0; fromloop < fat32vars->numDirectories; ++fromloop) {
@@ -964,7 +980,7 @@ void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
 
         if(!compareFilenames(dir->DIR_Name, TO)) {
             if(dir->DIR_Attr != 16) {
-                //printf("File already exists\n");
+                printf("File already exists\n");
                 return;
             }
             else {
@@ -1002,6 +1018,14 @@ void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
             else dir = &fat32vars->currentDirectories[fromloop];
         }
         fseek(image, dir->entryOffset, SEEK_SET);
+        free(temp);
+        temp = malloc(32*dirSize);
+        memset(temp, 0, 32*dirSize);
+        if(fromloop < fat32vars->numDirectories-1) {
+            temp[0] = 229;
+            if(dirSize==2) temp[32] = 229;
+        }
+        // fwrite(temp, 1, 32*dirSize, image);
         fillDirectories(image, fat32vars);
         return;
     }
