@@ -974,7 +974,7 @@ void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
     strcpy(filename, instr_ptr->tokens[1]);
 
     if(instr_ptr->numTokens == 2){
-      strcpy(TO, "TO");
+      strcpy(TO, instr_ptr->tokens[2]);
     }
     else if(instr_ptr->numTokens == 3){
 
@@ -993,7 +993,7 @@ void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
       }
 
       if(!found){
-        strcpy(TO, "TO");
+        strcpy(TO, instr_ptr->tokens[2]);
       }
 
     }
