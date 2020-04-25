@@ -1042,11 +1042,11 @@ void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
         }
     }
 
-    // //FROM was not found, print error
-    // if(dirFROM == NULL) {
-    //     printf("%s not found\n", FROM);
-    //     return;
-    // }
+    //FROM was not found, print error
+    if(dirFROM == NULL) {
+        printf("%s not found\n", instr_ptr->tokens[1]);
+        return;
+    }
 
 
     if(openFileIndex(fat32vars, filename) >= 0) {
