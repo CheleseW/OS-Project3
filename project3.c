@@ -257,7 +257,7 @@ int main (int argc, char* argv[]) {
         }
 
         else if(strcmp(first, "cp")==0) {
-            if(instr.numTokens == 3) {
+            if(instr.numTokens == 3 || instr.numTokens == 2) {
                 fat32cp(input, &fat32vars, &instr);
                 fclose(input);
                 input = fopen(argv[1], "r+");
@@ -973,12 +973,12 @@ void fat32cp(FILE *image, varStruct *fat32vars, instruction* instr_ptr) {
 
     strcpy(filename, instr_ptr->tokens[1]);
 
-    if(instr_ptr->numTokens == 3){
+    if(instr_ptr->numTokens == 2){
       strcpy(TO, "TO");
     }
-    else if(instr_ptr->numTokens == 4){
+    else if(instr_ptr->numTokens == 3){
 
-      strcpy(TO, instr_ptr->tokens[3]);
+      strcpy(TO, instr_ptr->tokens[2]);
       int loop, found = 0;
       for(loop = 0; loop < fat32vars->numDirectories; ++loop) {
 
